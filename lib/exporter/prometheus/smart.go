@@ -368,27 +368,41 @@ func computeHealth(d smartDisk) (health float64, status int) {
 
 	default:
 		// 1. CRITICAL GROUP
+		// Reallocated Sectors: log scale, cap at 50%
 		if d.ReallocatedSectors > 0 {
-			penalty := d.ReallocatedSectors * 2.0
-			if penalty > 60 {
-				penalty = 60
+			penalty := 5.0 + math.Log2(d.ReallocatedSectors+1)*4.0
+			if penalty > 50 {
+				penalty = 50
 			}
 			health -= penalty
 		}
-		if d.PendingSectors > 0 {
-			health -= 15.0
-			health -= d.PendingSectors * 3.0
+
+		// Pending Sectors & Offline Uncorrectable usually report the same
+		// failing sectors — take the worst to avoid double-counting.
+		badSectors := math.Max(d.PendingSectors, d.OfflineUncorrectable)
+		if badSectors > 0 {
+			penalty := 10.0 + math.Log2(badSectors+1)*5.0
+			if penalty > 80 {
+				penalty = 80
+			}
+			health -= penalty
 		}
-		if d.OfflineUncorrectable > 0 {
-			health -= 15.0
-			health -= d.OfflineUncorrectable * 3.0
-		}
+
+		// Reported Uncorrectable: log scale, cap at 25%
 		if d.ReportedUncorrect > 0 {
-			health -= 10.0
-			health -= d.ReportedUncorrect * 2.5
+			penalty := 5.0 + math.Log2(d.ReportedUncorrect+1)*3.0
+			if penalty > 25 {
+				penalty = 25
+			}
+			health -= penalty
 		}
+
 		if d.RuntimeBadBlock > 0 {
-			health -= d.RuntimeBadBlock * 4.0
+			penalty := d.RuntimeBadBlock * 4.0
+			if penalty > 40 {
+				penalty = 40
+			}
+			health -= penalty
 		}
 		if d.EndToEndErrors > 0 {
 			health -= d.EndToEndErrors * 3.0
@@ -421,12 +435,10 @@ func computeHealth(d smartDisk) (health float64, status int) {
 				health -= 5.0
 			}
 		}
-		if d.PowerOffRetract > 0 {
-			if d.PowerOffRetract > 100 {
-				health -= 5.0
-			} else if d.PowerOffRetract > 50 {
-				health -= 2.0
-			}
+		if d.PowerOffRetract > 1000 {
+			health -= 5.0
+		} else if d.PowerOffRetract > 500 {
+			health -= 2.0
 		}
 
 		// 5. CONNECTION
