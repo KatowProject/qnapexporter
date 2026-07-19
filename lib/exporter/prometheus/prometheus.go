@@ -57,6 +57,7 @@ type promExporter struct {
 	halApp      string
 	enclosures  []qnapEnclosure
 	envExpiry   time.Time
+	smartctlPath string
 
 	volumes         []volumeInfo
 	volumeLastFetch time.Time
@@ -101,6 +102,7 @@ func NewExporter(config ExporterConfig, status *exporter.Status) exporter.Export
 		"NetworkStats":    e.getNetworkStatsMetrics,
 		"Ping":            e.getPingMetrics,
 		"NvmeSmart":       e.getNvmeSmartMetrics,
+		"Smart":           e.getSmartMetrics,
 	}
 
 	if status != nil {
@@ -198,6 +200,7 @@ func (e *promExporter) readEnvironment() {
 	e.readDevices()
 	e.readNvmePath()
 	e.readDmCacheDevices()
+	e.readSmartctlPath()
 
 	e.envExpiry = e.envExpiry.Add(envValidity)
 
@@ -341,6 +344,17 @@ func (e *promExporter) readNvmePath() {
 			e.Logger.Printf("Retrieved nvme path: %q", e.nvmePath)
 		} else {
 			e.Logger.Println("nvme command not found, NVMe SMART metrics will not be available")
+		}
+	}
+}
+
+func (e *promExporter) readSmartctlPath() {
+	if e.smartctlPath == "" {
+		e.smartctlPath, _ = exec.LookPath("smartctl")
+		if e.smartctlPath != "" {
+			e.Logger.Printf("Retrieved smartctl path: %q", e.smartctlPath)
+		} else {
+			e.Logger.Println("smartctl command not found, SMART metrics will not be available")
 		}
 	}
 }
