@@ -367,30 +367,91 @@ func computeHealth(d smartDisk) (health float64, status int) {
 		}
 
 	default:
+		// 1. CRITICAL GROUP
 		if d.ReallocatedSectors > 0 {
-			health -= d.ReallocatedSectors * 2
+			penalty := d.ReallocatedSectors * 2.0
+			if penalty > 60 {
+				penalty = 60
+			}
+			health -= penalty
 		}
 		if d.PendingSectors > 0 {
-			health -= d.PendingSectors * 3
+			health -= 15.0
+			health -= d.PendingSectors * 3.0
 		}
 		if d.OfflineUncorrectable > 0 {
-			health -= d.OfflineUncorrectable * 5
-		}
-		if d.RuntimeBadBlock > 0 {
-			health -= d.RuntimeBadBlock * 4
+			health -= 15.0
+			health -= d.OfflineUncorrectable * 3.0
 		}
 		if d.ReportedUncorrect > 0 {
-			health -= d.ReportedUncorrect * 3
+			health -= 10.0
+			health -= d.ReportedUncorrect * 2.5
 		}
-		if d.SpinRetryCount > 0 {
-			health -= d.SpinRetryCount * 5
+		if d.RuntimeBadBlock > 0 {
+			health -= d.RuntimeBadBlock * 4.0
 		}
 		if d.EndToEndErrors > 0 {
-			health -= d.EndToEndErrors * 3
+			health -= d.EndToEndErrors * 3.0
 		}
-		if d.UDMACRCErrors > 0 && d.UDMACRCErrors < 100 {
-			health -= d.UDMACRCErrors * 0.1
+
+		// 2. MECHANICAL GROUP
+		if d.SpinRetryCount > 0 {
+			penalty := 20.0 + d.SpinRetryCount*5.0
+			if penalty > 45 {
+				penalty = 45
+			}
+			health -= penalty
 		}
+
+		// 3. AGE & WEAR GROUP
+		if d.PowerOnHrs > 43800 {
+			health -= 10.0
+		} else if d.PowerOnHrs > 26280 {
+			health -= 5.0
+		} else if d.PowerOnHrs > 17520 {
+			health -= 2.0
+		}
+
+		// 4. POWER & STABILITY
+		if d.PowerOnHrs > 0 && d.PowerCycles > 0 {
+			cyclesPerDay := d.PowerCycles / (d.PowerOnHrs / 24.0)
+			if cyclesPerDay > 5 {
+				health -= 10.0
+			} else if cyclesPerDay > 3 {
+				health -= 5.0
+			}
+		}
+		if d.PowerOffRetract > 0 {
+			if d.PowerOffRetract > 100 {
+				health -= 5.0
+			} else if d.PowerOffRetract > 50 {
+				health -= 2.0
+			}
+		}
+
+		// 5. CONNECTION
+		if d.UDMACRCErrors > 0 {
+			penalty := d.UDMACRCErrors * 0.3
+			if penalty > 15 {
+				penalty = 15
+			}
+			health -= penalty
+		}
+
+		// 6. TEMPERATURE
+		if d.Temperature > 0 {
+			if d.Temperature > 65 {
+				health -= 20.0
+			} else if d.Temperature > 55 {
+				health -= 10.0
+			} else if d.Temperature > 50 {
+				health -= 5.0
+			}
+			if d.Temperature < 20 {
+				health -= 5.0
+			}
+		}
+
 		if health < 0 {
 			health = 0
 		}
@@ -406,13 +467,6 @@ func computeHealth(d smartDisk) (health float64, status int) {
 
 func min(a, b float64) float64 {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
 		return a
 	}
 	return b
