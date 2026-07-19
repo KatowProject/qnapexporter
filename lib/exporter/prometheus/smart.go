@@ -3,11 +3,10 @@ package prometheus
 import (
 	"fmt"
 	"math"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/pedropombeiro/qnapexporter/lib/utils"
 )
 
 type smartDisk struct {
@@ -431,8 +430,9 @@ func (e *promExporter) readSMART(dev smartDevice) (smartDisk, bool) {
 			cmdArgs = append(cmdArgs, "-d", dev.Driver)
 		}
 		cmdArgs = append(cmdArgs, dev.Path)
-		out, err := utils.ExecCommand(e.smartctlPath, cmdArgs...)
-		return out, err
+		cmd := exec.Command(e.smartctlPath, cmdArgs...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
 	}
 
 	info, _ := runSmartctl("-i")
@@ -551,12 +551,13 @@ func (e *promExporter) getSmartMetrics() ([]metric, error) {
 		return nil, nil
 	}
 
-	out, err := utils.ExecCommand(e.smartctlPath, "--scan-open")
-	if err != nil {
+	cmd := exec.Command(e.smartctlPath, "--scan-open")
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
 		e.Logger.Printf("smartctl --scan-open failed: %v", err)
 		return nil, nil
 	}
-	
+
 	var devices []smartDevice
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
@@ -573,6 +574,16 @@ func (e *promExporter) getSmartMetrics() ([]metric, error) {
 					break
 				}
 			}
+
+			if dev.Driver == "scsi" {
+				probeCmd := exec.Command(e.smartctlPath, "-i", "-d", "sat", dev.Path)
+				probeOut, _ := probeCmd.CombinedOutput()
+				probeStr := string(probeOut)
+				if strings.Contains(probeStr, "SATA Version is:") || strings.Contains(probeStr, "ATA Version is:") {
+					dev.Driver = "sat"
+				}
+			}
+
 			devices = append(devices, dev)
 		}
 	}
@@ -599,7 +610,7 @@ func (e *promExporter) getSmartMetrics() ([]metric, error) {
 		} else if d.IsSSD {
 			diskType = "ssd"
 		}
-		
+
 		model := sanitizeLabel(d.Model)
 		serial := sanitizeLabel(d.Serial)
 		firmware := sanitizeLabel(d.Firmware)
