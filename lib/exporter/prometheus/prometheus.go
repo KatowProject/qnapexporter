@@ -350,7 +350,24 @@ func (e *promExporter) readNvmePath() {
 
 func (e *promExporter) readSmartctlPath() {
 	if e.smartctlPath == "" {
-		e.smartctlPath, _ = exec.LookPath("smartctl")
+		path, err := exec.LookPath("smartctl")
+		if err != nil {
+			commonPaths := []string{
+				"/opt/bin/smartctl",
+				"/opt/sbin/smartctl",
+				"/usr/local/sbin/smartctl",
+				"/usr/local/bin/smartctl",
+				"/sbin/smartctl",
+				"/usr/sbin/smartctl",
+			}
+			for _, p := range commonPaths {
+				if _, err := os.Stat(p); err == nil {
+					path = p
+					break
+				}
+			}
+		}
+		e.smartctlPath = path
 		if e.smartctlPath != "" {
 			e.Logger.Printf("Retrieved smartctl path: %q", e.smartctlPath)
 		} else {
